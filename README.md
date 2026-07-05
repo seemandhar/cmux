@@ -59,7 +59,7 @@ useful. `cmux` goes further:
 dashboard (all stdlib). macOS or Linux.
 
 ```sh
-git clone https://github.com/jainsee24/cmux ~/.cmux
+git clone https://github.com/seemandhar/cmux ~/.cmux
 ~/.cmux/install.sh            # symlink `cmux` into ~/.local/bin
 ~/.cmux/install.sh --all      # + wire status hooks + add the tmux plugin
 ```
@@ -70,7 +70,7 @@ Then just run `cmux`. Check your setup any time with `cmux doctor`.
 <summary>As a tmux plugin (tpm)</summary>
 
 ```tmux
-set -g @plugin 'jainsee24/cmux'
+set -g @plugin 'seemandhar/cmux'
 ```
 
 or manually in `~/.tmux.conf`:
