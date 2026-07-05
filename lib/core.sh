@@ -32,7 +32,10 @@ _opt() { # _opt <tmux-option> <env-var> <default>
   printf '%s' "${v:-$3}"
 }
 
-cmux_prefix()   { _opt @cmux_prefix   CMUX_PREFIX   'claude-'; }
+cmux_prefix()     { _opt @cmux_prefix     CMUX_PREFIX     'claude-'; }
+# 'on' (default) also finds hand-started sessions by their live claude process;
+# 'off' restricts to prefix-named / hook-stamped sessions only.
+cmux_autodetect() { _opt @cmux_autodetect CMUX_AUTODETECT 'on'; }
 cmux_command()  { _opt @cmux_command  CMUX_COMMAND  'claude'; }
 cmux_popup_w()  { _opt @cmux_popup_w  CMUX_POPUP_W  '92%'; }
 cmux_popup_h()  { _opt @cmux_popup_h  CMUX_POPUP_H  '92%'; }
@@ -138,14 +141,18 @@ _claude_ttys() { # set of ttys (pts/N) currently running claude
 list_running() {
   local prefix now claude_ttys claude_sessions
   prefix="$(cmux_prefix)"; now="$(date +%s)"
-  claude_ttys=" $(_claude_ttys | tr '\n' ' ') "
 
   # Map every pane tty -> session in ONE call, then flag sessions whose tty hosts
   # a live claude process. This is what finds hand-started (unprefixed) sessions.
-  claude_sessions=" $(tmux list-panes -a -F '#{session_name} #{pane_tty}' 2>/dev/null \
-      | while read -r sn tt; do
-          [[ "$claude_ttys" == *" ${tt#/dev/} "* ]] && printf '%s ' "$sn"
-        done | tr ' ' '\n' | sort -u | tr '\n' ' ') "
+  # Skipped when auto-detect is off (prefix / hook-stamped sessions only).
+  claude_sessions=" "
+  if [ "$(cmux_autodetect)" != off ]; then
+    claude_ttys=" $(_claude_ttys | tr '\n' ' ') "
+    claude_sessions=" $(tmux list-panes -a -F '#{session_name} #{pane_tty}' 2>/dev/null \
+        | while read -r sn tt; do
+            [[ "$claude_ttys" == *" ${tt#/dev/} "* ]] && printf '%s ' "$sn"
+          done | tr ' ' '\n' | sort -u | tr '\n' ' ') "
+  fi
 
   # One list-sessions call pulls session fields AND our @cmux_* options via the
   # format string — no per-session show-options round-trips. Optional options are

@@ -5,7 +5,22 @@
 #   ./install.sh --tmux     also append the plugin line to your tmux.conf
 #   ./install.sh --all      do everything
 set -euo pipefail
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_URL="${CMUX_REPO:-https://github.com/seemandhar/cmux}"
+
+# Bootstrap: when run via `curl … | bash` there's no checkout beside us, so
+# clone (or update) into ~/.cmux and re-exec the real installer from there.
+_self="${BASH_SOURCE[0]:-}"
+if [ -z "$_self" ] || [ ! -f "$(dirname "$_self")/cmux" ]; then
+  target="${CMUX_HOME:-$HOME/.cmux}"
+  if [ -d "$target/.git" ]; then
+    echo "→ updating cmux in $target"; git -C "$target" pull --ff-only --quiet || true
+  else
+    echo "→ cloning cmux into $target"; git clone --depth 1 "$REPO_URL" "$target"
+  fi
+  exec bash "$target/install.sh" "$@"
+fi
+
+DIR="$(cd "$(dirname "$_self")" && pwd)"
 BIN="${PREFIX:-$HOME/.local}/bin"
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SETTINGS="$CLAUDE_HOME/settings.json"

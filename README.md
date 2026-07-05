@@ -10,6 +10,10 @@ conversations, and drive it all from your phone.
 
 `bash` · `fzf` · zero required config · works with sessions you started by hand
 
+<br>
+
+<img src="docs/img/hero.png" alt="cmux — the session manager, showing live/waiting/idle/closed sessions with a live preview pane" width="880">
+
 </div>
 
 ```
@@ -58,11 +62,21 @@ useful. `cmux` goes further:
 **Requirements:** `tmux ≥ 3.2`, `fzf`, `jq`, `bash`; `python3` for the web
 dashboard (all stdlib). macOS or Linux.
 
+**One line — clones, links `cmux`, wires hooks + the tmux plugin:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/seemandhar/cmux/master/install.sh | bash -s -- --all
+```
+
+<details>
+<summary>Prefer to do it by hand?</summary>
+
 ```sh
 git clone https://github.com/seemandhar/cmux ~/.cmux
 ~/.cmux/install.sh            # symlink `cmux` into ~/.local/bin
 ~/.cmux/install.sh --all      # + wire status hooks + add the tmux plugin
 ```
+</details>
 
 Then just run `cmux`. Check your setup any time with `cmux doctor`.
 
@@ -115,6 +129,8 @@ cmux json         # machine-readable session list (for scripting)
 ```
 
 ## Phone access 📱
+
+<img src="docs/img/web-phone.png" alt="cmux phone dashboard" width="270" align="right">
 
 ```sh
 cmux web
