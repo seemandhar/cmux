@@ -65,7 +65,7 @@ dashboard (all stdlib). macOS or Linux.
 **One line — clones, links `cmux`, wires hooks + the tmux plugin:**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/seemandhar/cmux/master/install.sh | bash -s -- --all
+curl -fsSL https://raw.githubusercontent.com/seemandhar/cmux/main/install.sh | bash -s -- --all
 ```
 
 <details>
