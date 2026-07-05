@@ -33,4 +33,15 @@ tmux set-option -t "$session" @cmux_state "$state"        2>/dev/null
 tmux set-option -t "$session" @cmux_state_at "$(date +%s)" 2>/dev/null
 [ -n "$sid" ] && tmux set-option -t "$session" @cmux_sid "$sid" 2>/dev/null
 [ -n "$cwd" ] && tmux set-option -t "$session" @cmux_cwd "$cwd" 2>/dev/null
+
+# Optional desktop nudge when a session starts needing you (opt-in):
+#   tmux set -g @cmux_notify on
+if [ "$state" = waiting ] && \
+   [ "$(tmux show-option -gqv @cmux_notify 2>/dev/null)" = on ]; then
+  msg="Claude needs you · ${cwd:-$session}"
+  if   command -v notify-send      >/dev/null 2>&1; then notify-send "cmux" "$msg"
+  elif command -v terminal-notifier>/dev/null 2>&1; then terminal-notifier -title cmux -message "$msg"
+  fi 2>/dev/null
+  tmux display-message "🔔 $msg" 2>/dev/null   # always show in tmux status line
+fi
 exit 0

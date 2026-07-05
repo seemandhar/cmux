@@ -175,6 +175,7 @@ Set as tmux options (`set -g @cmux_… value`) or environment variables:
 | `@cmux_popup_w` / `_h` | `CMUX_POPUP_W/H` | `92%` | popup size |
 | `@cmux_max_closed` | `CMUX_MAX_CLOSED` | `250` | history entries to scan |
 | `@cmux_key` / `@cmux_new_key` | — | `C` / `N` | plugin keybindings |
+| `@cmux_notify` | — | `off` | `on` → desktop notification when a session starts waiting on you |
 
 ## Tests
 
