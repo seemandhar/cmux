@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# cmux — a one-stop tmux session manager for Claude Code.
+#
+#   cmux                 open the interactive session manager (default)
+#   cmux ls              list sessions as plain text (scripting / no fzf)
+#   cmux new [dir]       start a new Claude session (in dir, default $PWD)
+#   cmux yolo [dir]      start a new session with --dangerously-skip-permissions
+#   cmux resume          pick a past conversation and reopen it in tmux
+#   cmux attach          pick a live session and attach/jump to it
+#   cmux web [port]      serve the mobile-friendly web dashboard (phone access)
+#   cmux reap            kill every finished (idle/done) session
+#   cmux doctor          check dependencies and hook wiring
+#   cmux help            show this help
+#
+# Zero required config: it auto-detects any tmux session running `claude`.
+# Optional Claude Code hooks add live working/waiting/idle status (see README).
+set -uo pipefail
+
+CMUX_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cmux"
+CMUX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export CMUX_BIN CMUX_DIR
+
+# shellcheck source=lib/core.sh
+. "$CMUX_DIR/lib/core.sh"
+# shellcheck source=lib/ui.sh
+. "$CMUX_DIR/lib/ui.sh"
+# shellcheck source=lib/tmux.sh
+. "$CMUX_DIR/lib/tmux.sh"
+# shellcheck source=lib/picker.sh
+. "$CMUX_DIR/lib/picker.sh"
+
+need_tmux() {
+  command -v tmux >/dev/null 2>&1 || { echo "cmux: tmux is required" >&2; exit 1; }
+}
+need_fzf() {
+  command -v fzf >/dev/null 2>&1 || {
+    echo "cmux: fzf is required for the interactive UI. Try 'cmux ls' instead." >&2; exit 1; }
+}
+
+# ── plain-text listing (no fzf; good for scripts, pipes, tiny terminals) ─────
+cmd_ls() {
+  local run wait closed; read -r run wait closed <<<"$(cmux_counts)"
+  cmux_banner_narrow "$run" "$wait" "$closed"
+  { list_running; list_closed; } | while IFS=$'\t' read -r kind id st age agetxt att title cwd ref; do
+    [ -z "$kind" ] && continue
+    printf '%s  %-10s %s%-52.52s%s %s%s%s\n' \
+      "$(status_glyph "$st" "$att")" "$agetxt" \
+      "$C_BOLD" "$title" "$C_RESET" "$C_DIM" "$cwd" "$C_RESET"
+  done
+}
+
+# ── the interactive manager (default) ───────────────────────────────────────
+cmd_menu() {
+  need_tmux
+  if ! command -v fzf >/dev/null 2>&1; then cmd_ls; exit 0; fi
+  # If launched from inside a cmux popup, hand off to a clean outer client so the
+  # picker isn't cramped (mirrors the reference plugin's nested-popup handling).
+  picker_loop
+}
+
+# ── one-shot verbs ──────────────────────────────────────────────────────────
+cmd_new()    { need_tmux; launch_new "${1:-$PWD}" "$(_origin_win)"; }
+cmd_yolo()   { need_tmux; launch_new "${1:-$PWD}" "$(_origin_win)" --yolo; }
+cmd_attach() { need_tmux; need_fzf; picker_loop; }
+cmd_resume() {
+  need_tmux
+  if ! command -v fzf >/dev/null 2>&1; then
+    echo "cmux: fzf required to pick a conversation" >&2; exit 1; fi
+  local sel kind id ref cwd
+  sel="$(list_closed | while IFS=$'\t' read -r k i s a at att t c r; do
+           fmt_row "$k" "$i" "$s" "$a" "$at" "$att" "$t" "$c" "$r"; done | \
+        fzf --ansi --delimiter='\t' --with-nth='4..' --reverse \
+            --preview="$CMUX_BIN __preview {1} {2} {3}" --preview-window='right,58%,wrap' \
+            --header='Resume a past conversation · enter reopens it in tmux')"
+  [ -z "$sel" ] && exit 0
+  id="$(printf '%s' "$sel" | cut -f2)"; ref="$(printf '%s' "$sel" | cut -f3)"
+  cwd="$(jsonl_cwd "$ref")"; resume_closed "$id" "${cwd:-$PWD}"
+}
+cmd_reap() {
+  need_tmux
+  local n; n="$(kill_all_idle)"
+  printf '%sReaped %s finished session(s).%s\n' "$C_GRN" "$n" "$C_RESET"
+}
+
+cmd_web() {
+  local port="${1:-8790}"
+  command -v python3 >/dev/null 2>&1 || { echo "cmux: python3 required for the web dashboard" >&2; exit 1; }
+  CMUX_BIN="$CMUX_BIN" CMUX_DIR="$CMUX_DIR" python3 "$CMUX_DIR/web/server.py" "$port"
+}
+
+cmd_doctor() {
+  echo "cmux doctor"
+  for t in tmux fzf jq python3 claude; do
+    if command -v "$t" >/dev/null 2>&1; then
+      printf '  %s✓%s %-8s %s\n' "$C_GRN" "$C_RESET" "$t" "$(command -v "$t")"
+    else
+      printf '  %s✗%s %-8s not found\n' "$C_RED" "$C_RESET" "$t"
+    fi
+  done
+  local set=""
+  set="$(tmux show-hooks 2>/dev/null; grep -rl cmux "$CLAUDE_HOME/settings.json" 2>/dev/null)"
+  if grep -q 'state.sh' "$CLAUDE_HOME/settings.json" 2>/dev/null; then
+    printf '  %s✓%s hooks wired in %s\n' "$C_GRN" "$C_RESET" "$CLAUDE_HOME/settings.json"
+  else
+    printf '  %s•%s status hooks not wired (optional) — run install.sh --hooks\n' "$C_YEL" "$C_RESET"
+  fi
+  local r w c; read -r r w c <<<"$(cmux_counts)"
+  printf '  %s→%s %s running · %s waiting · %s on disk\n' "$C_CYN" "$C_RESET" "$r" "$w" "$c"
+}
+
+cmd_help() {
+  local r w c; read -r r w c <<<"$(cmux_counts 2>/dev/null || echo '0 0 0')"
+  cmux_banner "$r" "$w" "$c"
+  # Print the contiguous comment header (skip the shebang, stop at first code).
+  awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$CMUX_BIN"
+}
+
+# ── hidden callbacks used by fzf bindings ───────────────────────────────────
+# Emit all sessions as a JSON array (consumed by the web dashboard / scripts).
+cmd_json() {
+  { list_running; list_closed; } | jq -R -s -c '
+    split("\n") | map(select(length>0) | split("\t") | {
+      kind:.[0], id:.[1], status:.[2], age:(.[3]|tonumber? // 0),
+      agetxt:.[4], attached:(.[5]=="1"), title:.[6], cwd:.[7], ref:.[8]
+    })'
+}
+
+case "${1:-}" in
+  __preview) shift; CMUX_NO_COLOR=1 cmux_preview "$@"; exit 0 ;;
+  __rows)    build_rows; exit 0 ;;
+  __kill)    kill_session "${3:-}"; exit 0 ;;   # args: kind id
+  __reap)    kill_all_idle >/dev/null; exit 0 ;;
+  __send)    shift; send_prompt "$1" "$2"; exit 0 ;;   # args: session text
+  __new)     shift; create_session "$1" "" ${2:+--yolo} >/dev/null 2>&1; exit 0 ;;
+  __resume)  shift  # args: sid jsonl-path ; derive cwd from the transcript
+             _cwd="$(jsonl_cwd "$2")"; create_resume "$1" "${_cwd:-$HOME}" >/dev/null 2>&1; exit 0 ;;
+esac
+
+case "${1:-}" in
+  ''|menu|ui)      cmd_menu ;;
+  ls|list)         cmd_ls ;;
+  json)            cmd_json ;;
+  new|start)       shift; cmd_new "$@" ;;
+  yolo|danger)     shift; cmd_yolo "$@" ;;
+  attach|jump)     cmd_attach ;;
+  resume|history)  cmd_resume ;;
+  reap|clean)      cmd_reap ;;
+  web|serve)       shift; cmd_web "$@" ;;
+  doctor|check)    cmd_doctor ;;
+  help|-h|--help)  cmd_help ;;
+  *) echo "cmux: unknown command '$1' (try 'cmux help')" >&2; exit 1 ;;
+esac

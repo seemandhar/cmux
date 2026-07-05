@@ -1,0 +1,28 @@
+{
+  "//": "cmux status hooks — merge this into ~/.claude/settings.json under \"hooks\".",
+  "//2": "Replace CMUX_DIR with your clone path, or run ./install.sh --hooks to wire it automatically.",
+  "hooks": {
+    "UserPromptSubmit": [
+      { "matcher": "", "hooks": [
+        { "type": "command", "command": "CMUX_DIR/scripts/state.sh working" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "", "hooks": [
+        { "type": "command", "command": "CMUX_DIR/scripts/state.sh working" } ] },
+      { "matcher": "AskUserQuestion", "hooks": [
+        { "type": "command", "command": "CMUX_DIR/scripts/state.sh waiting" } ] }
+    ],
+    "Notification": [
+      { "matcher": "permission_prompt", "hooks": [
+        { "type": "command", "command": "CMUX_DIR/scripts/state.sh waiting" } ] }
+    ],
+    "Stop": [
+      { "matcher": "", "hooks": [
+        { "type": "command", "command": "CMUX_DIR/scripts/state.sh idle" } ] }
+    ],
+    "SubagentStop": [
+      { "matcher": "", "hooks": [
+        { "type": "command", "command": "CMUX_DIR/scripts/state.sh idle" } ] }
+    ]
+  }
+}

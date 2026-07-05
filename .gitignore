@@ -1,0 +1,6 @@
+# cmux parse cache (regenerated on demand)
+.cmux-cache/
+*.cmux-bak.*
+# editor / OS cruft
+.DS_Store
+*.swp
