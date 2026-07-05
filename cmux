@@ -16,8 +16,16 @@
 # Optional Claude Code hooks add live working/waiting/idle status (see README).
 set -uo pipefail
 
-CMUX_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cmux"
-CMUX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve our real location even when invoked through a symlink (e.g. the
+# ~/.local/bin/cmux link the installer creates) so lib/ is found. Portable —
+# no reliance on GNU readlink -f.
+_src="${BASH_SOURCE[0]}"
+while [ -L "$_src" ]; do
+  _d="$(cd -P "$(dirname "$_src")" && pwd)"
+  _src="$(readlink "$_src")"; [[ "$_src" != /* ]] && _src="$_d/$_src"
+done
+CMUX_DIR="$(cd -P "$(dirname "$_src")" && pwd)"
+CMUX_BIN="$CMUX_DIR/cmux"
 export CMUX_BIN CMUX_DIR
 
 # shellcheck source=lib/core.sh

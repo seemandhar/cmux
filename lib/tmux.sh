@@ -2,10 +2,11 @@
 # cmux — tmux operations. Everything that creates, enters, or destroys a session
 # lives here so the pickers stay pure UI. Safe to source multiple times.
 
-# new_session_name <cwd>  -> stable "claude-<8hex>" name for a directory
+# new_session_name <cwd>  -> stable "claude-<12hex>" name for a directory.
+# 12 hex (48 bits) makes first-prefix collisions between distinct dirs negligible.
 new_session_name() {
   local prefix h; prefix="$(cmux_prefix)"
-  h="$(printf '%s\n' "$1" | { md5sum 2>/dev/null || md5 2>/dev/null || shasum; } | cut -c1-8)"
+  h="$(printf '%s\n' "$1" | { md5sum 2>/dev/null || md5 2>/dev/null || shasum; } | cut -c1-12)"
   printf '%s%s' "$prefix" "$h"
 }
 
@@ -65,7 +66,7 @@ create_resume() {
   cmd="$(cmux_command)"
   [ "$flag" = "--yolo" ] && yolo=" --dangerously-skip-permissions"
   # Name derived from the sid so re-resuming reuses the same window.
-  name="$(cmux_prefix)r-$(printf '%s' "$sid" | cut -c1-8)"
+  name="$(cmux_prefix)r-$(printf '%s' "$sid" | cut -c1-12)"
   if ! tmux has-session -t "$name" 2>/dev/null; then
     tmux new-session -d -s "$name" -c "$cwd" \
       "$cmd$yolo --resume '$sid' --fork-session"
@@ -93,7 +94,16 @@ jump_to() {
 }
 
 kill_session()  { tmux kill-session -t "$1" 2>/dev/null; }
-rename_session(){ tmux rename-session -t "$1" "$2" 2>/dev/null; }
+
+# rename_session <session> <new-name> — reject names with characters that tmux
+# targets / shells treat specially, so a rename can't smuggle metacharacters.
+rename_session(){
+  case "$2" in
+    ''|*[^A-Za-z0-9._-]*)
+      tmux display-message "cmux: name must be [A-Za-z0-9._-]" 2>/dev/null; return 1 ;;
+  esac
+  tmux rename-session -t "$1" "$2" 2>/dev/null
+}
 
 # send_prompt <session> <text> — type a prompt into a session and submit it.
 send_prompt() {
@@ -102,7 +112,8 @@ send_prompt() {
   tmux send-keys -t "$s" Enter 2>/dev/null
 }
 
-# kill_all_idle — reap every finished (idle/done/waiting) live session at once.
+# kill_all_idle — reap every finished live session at once. In practice only
+# `idle` sessions match (hooks stamp working/waiting/idle; `done` is disk-only).
 kill_all_idle() {
   local n=0
   while IFS=$'\t' read -r kind id status _; do

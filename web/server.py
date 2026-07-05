@@ -143,7 +143,7 @@ async function openModal(x){
   mttl.textContent=x.title.slice(0,42);
   mbody.textContent='loading preview…';
   document.getElementById('modal').classList.add('show');
-  const q=new URLSearchParams({kind:x.kind,id:x.id,ref:x.ref});
+  const q=new URLSearchParams({kind:x.kind,id:x.id,ref:x.ref,t:T});
   mbody.textContent=await fetch('/api/preview?'+q).then(r=>r.text()).catch(_=>'(preview unavailable)');
   if(x.kind==='run'){
     mact.innerHTML=`<input id=pin placeholder="send a prompt…" onkeydown="if(event.key==='Enter')send()">
@@ -158,7 +158,7 @@ async function send(){const t=pin.value.trim();if(!t)return;pin.value='';
   await post('/api/send',{id:CUR.id,text:t});setTimeout(()=>openModal(CUR),400);}
 async function kill(){if(!confirm('Kill '+CUR.id+'?'))return;await post('/api/kill',{id:CUR.id});closeModal();load();}
 async function resume(){await post('/api/resume',{id:CUR.id,ref:CUR.ref});closeModal();
-  alert('Resuming — attach from your terminal:\\n\\ntmux attach -t '+('claude-r-'+CUR.id.slice(0,8)));load();}
+  alert('Resuming — attach from your terminal:\\n\\ntmux attach -t '+('claude-r-'+CUR.id.slice(0,12)));load();}
 function openNew(){newdir.value='';newyolo.checked=false;document.getElementById('newmodal').classList.add('show');}
 async function doNew(){const d=newdir.value.trim();if(!d)return alert('Enter a directory');
   await post('/api/new',{dir:d,yolo:newyolo.checked});hide('newmodal');load();}
@@ -170,7 +170,22 @@ load();setInterval(load,4000);
 </script></body></html>"""
 
 
+MAX_BODY = 65536  # refuse absurd POST bodies (defends the --lan case)
+
+
+def valid_target(kind, sid, ref):
+    """Only allow previewing a session that actually appears in the live list —
+    stops a caller from dumping an arbitrary tmux pane or file via __preview."""
+    for s in sessions():
+        if s.get("kind") == kind and s.get("id") == sid and \
+           (kind != "closed" or s.get("ref") == ref):
+            return True
+    return False
+
+
 class H(BaseHTTPRequestHandler):
+    timeout = 20  # per-connection socket timeout
+
     def log_message(self, *a):  # quiet
         pass
 
@@ -193,17 +208,26 @@ class H(BaseHTTPRequestHandler):
         elif u.path == "/api/sessions":
             self._send(200, json.dumps(sessions()), "application/json")
         elif u.path == "/api/preview":
+            if q.get("t", [""])[0] != TOKEN:
+                return self._send(403, "bad token", "text/plain")
             kind = q.get("kind", [""])[0]; sid = q.get("id", [""])[0]; ref = q.get("ref", [""])[0]
+            if not valid_target(kind, sid, ref):
+                return self._send(404, "no such session", "text/plain")
             self._send(200, cmux("__preview", kind, sid, ref) or "(no preview)",
                        "text/plain; charset=utf-8")
         else:
             self._send(404, "not found", "text/plain")
 
     def do_POST(self):
-        n = int(self.headers.get("content-length", 0))
+        try:
+            n = int(self.headers.get("content-length", 0))
+        except ValueError:
+            return self._send(400, "bad length", "text/plain")
+        if n > MAX_BODY:
+            return self._send(413, "too large", "text/plain")
         try:
             data = json.loads(self.rfile.read(n) or b"{}")
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError):
             data = {}
         if not self._guard(data):
             return self._send(403, "bad token", "text/plain")
@@ -227,6 +251,7 @@ def main():
     lan = "--lan" in sys.argv
     port = int(args[0]) if args else 8790
     host = "0.0.0.0" if lan else "127.0.0.1"
+    ThreadingHTTPServer.daemon_threads = True
     srv = ThreadingHTTPServer((host, port), H)
     shown = "your-lan-ip" if lan else "localhost"
     url = f"http://{shown}:{port}/?t={TOKEN}"
