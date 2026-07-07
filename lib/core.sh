@@ -162,48 +162,67 @@ list_running() {
   fmt+='	#{?@cmux_state,#{@cmux_state},-}	#{?@cmux_state_at,#{@cmux_state_at},-}'
   fmt+='	#{?@cmux_sid,#{@cmux_sid},-}	#{?@cmux_cwd,#{@cmux_cwd},-}'
   fmt+='	#{?@cmux_origin,#{@cmux_origin},-}	#{pane_current_path}'
-  tmux list-sessions -F "$fmt" \
-    2>/dev/null | while IFS=$'\t' read -r s attached activity state at sid cwd origin panepath; do
-    local title is_claude age
-    # unfold '-' placeholders back to empty
+  # Read every session once, then resolve titles in two passes so that multiple
+  # live sessions sharing a directory don't all show the SAME newest transcript.
+  local -a R_name R_state R_age R_att R_cwd R_origin R_sid R_title
+  local -A used              # jsonl paths already assigned to a session
+  local -a fallback_idx      # sessions still needing a transcript (no sid link)
+  local n=0
+
+  local line s attached activity state at sid cwd origin panepath age
+  while IFS=$'\t' read -r s attached activity state at sid cwd origin panepath; do
     [ "$state" = - ] && state=""; [ "$at" = - ] && at=""; [ "$sid" = - ] && sid=""
     [ "$origin" = - ] && origin=""; { [ "$cwd" = - ] || [ -z "$cwd" ]; } && cwd="$panepath"
 
-    is_claude=0
+    local is_claude=0
     [[ "$s" == "$prefix"* ]] && is_claude=1
     [ -n "$state" ] && is_claude=1
     [[ "$claude_sessions" == *" $s "* ]] && is_claude=1
     [ "$is_claude" -eq 0 ] && continue
 
-    # age: prefer the hook's timestamp, else tmux activity.
     if [ -n "$at" ]; then age=$(( now - at ));
     elif [ -n "$activity" ]; then age=$(( now - activity )); else age=0; fi
     [ "$age" -lt 0 ] && age=0
 
     case "$state" in
-      working) state=working ;; waiting) state=waiting ;;
-      idle)    state=idle ;;    done) state=done ;;
-      *)       state=live ;;
+      working|waiting|idle|done) ;; *) state=live ;;
     esac
 
-    # title: hook-linked jsonl if we know the sid, else newest jsonl in cwd.
-    title=""
-    if [ -n "$sid" ] && [ -n "$cwd" ]; then
-      local jf="$PROJECTS_DIR/$(encode_path "$cwd")/$sid.jsonl"
-      [ -f "$jf" ] && title="$(jsonl_meta "$jf" | cut -f1)"
-    fi
-    if [ -z "$title" ] && [ -n "$cwd" ]; then
-      local pd="$PROJECTS_DIR/$(encode_path "$cwd")" newest
-      newest="$(ls -t "$pd"/*.jsonl 2>/dev/null | head -1)"
-      [ -n "$newest" ] && title="$(jsonl_meta "$newest" | cut -f1)"
-    fi
-    [ -z "$title" ] && title="(live session)"
+    R_name[n]="$s"; R_state[n]="$state"; R_age[n]="$age"
+    R_att[n]="${attached:-0}"; R_cwd[n]="$cwd"; R_origin[n]="${origin:--}"; R_sid[n]="$sid"
 
-    # NB: every field must be non-empty. tmux/tab whitespace makes empty middle
-    # fields collapse under `IFS=$'\t' read`, so we placeholder with '-'.
+    # Pass 1: a hook-provided sid maps to the exact transcript — claim it now.
+    local title=""
+    if [ -n "$sid" ]; then
+      local jf="$PROJECTS_DIR/$(encode_path "$cwd")/$sid.jsonl"
+      if [ -f "$jf" ]; then title="$(jsonl_meta "$jf" | cut -f1)"; used["$jf"]=1; fi
+    fi
+    R_title[n]="$title"
+    [ -z "$title" ] && fallback_idx+=("$n")
+    n=$((n+1))
+  done < <(tmux list-sessions -F "$fmt" 2>/dev/null)
+
+  # Pass 2: sessions with no sid link get the newest UNCLAIMED transcript in their
+  # directory, handed out most-recently-active session first — so N sessions in
+  # one dir show N distinct, recency-appropriate titles instead of N identical ones.
+  local idx
+  for idx in $(for i in "${fallback_idx[@]}"; do printf '%s %s\n' "${R_age[i]}" "$i"; done \
+                 | sort -n | awk '{print $2}'); do
+    local pd="$PROJECTS_DIR/$(encode_path "${R_cwd[idx]}")" f
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      [ -n "${used[$f]:-}" ] && continue
+      R_title[idx]="$(jsonl_meta "$f" | cut -f1)"; used["$f"]=1; break
+    done < <(ls -t "$pd"/*.jsonl 2>/dev/null)
+    [ -z "${R_title[idx]}" ] && R_title[idx]="(live session)"
+  done
+
+  # Emit. Every field non-empty (tab is IFS whitespace → empty fields collapse).
+  local i
+  for ((i=0; i<n; i++)); do
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      run "$s" "$state" "$age" "$(human_age "$age")" "${attached:-0}" \
-      "$title" "$(tilde "$cwd")" "${origin:--}"
+      run "${R_name[i]}" "${R_state[i]}" "${R_age[i]}" "$(human_age "${R_age[i]}")" \
+      "${R_att[i]}" "${R_title[i]:-(live session)}" "$(tilde "${R_cwd[i]}")" "${R_origin[i]}"
   done
 }
 

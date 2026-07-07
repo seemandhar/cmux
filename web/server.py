@@ -70,8 +70,8 @@ border:1px solid var(--line);display:flex;flex-direction:column;animation:up .22
 @keyframes up{from{transform:translateY(30px);opacity:.4}to{transform:none;opacity:1}}
 .sheet header{position:static;background:none;border-bottom:1px solid var(--line)}
 .sheet .ttl{font-weight:700}.close{margin-left:auto;background:none;border:0;color:var(--dim);font-size:22px}
-pre{margin:0;padding:14px;overflow:auto;flex:1;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
-white-space:pre-wrap;word-break:break-word;color:#cfd8e3}
+pre{margin:0;padding:14px;overflow:auto;flex:1;min-height:0;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre-wrap;word-break:break-word;color:#cfd8e3;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .act{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line)}
 .act input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--fg);
 border-radius:10px;padding:11px 12px;font-size:15px}
@@ -81,11 +81,19 @@ border-radius:10px;padding:11px 12px;font-size:15px}
 .new{padding:12px}.new input{width:100%;margin-bottom:8px}
 label.chk{display:flex;align-items:center;gap:8px;color:var(--dim);font-size:13px;margin-bottom:10px}
 .hint{font-size:11.5px;color:var(--gry);text-align:center;padding:10px}
+.hbtn{background:var(--card2);border:1px solid var(--line);color:var(--fg);border-radius:9px;
+padding:7px 11px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.hbtn.p{background:var(--acc);color:#04121e;border-color:var(--acc)}
+.htools{display:flex;gap:8px;margin-left:auto;align-items:center}
 </style></head><body>
 <header><span class=logo>CMUX</span>
-<span id=counts class=counts></span></header>
+<div class=htools>
+  <span id=counts class=counts></span>
+  <button class=hbtn onclick=load() title=Refresh>⟳</button>
+  <button class="hbtn p" onclick=openNew()>＋ New</button>
+</div></header>
 <main id=list><div class=empty>loading…</div></main>
-<button class=fab onclick="openNew()">+</button>
+<button class=fab onclick="openNew()" title="New session">+</button>
 
 <div class=modal id=modal>
  <div class=sheet>

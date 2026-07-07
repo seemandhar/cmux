@@ -16,15 +16,21 @@ _in_popup() {
   [[ "$(tmux display-message -p '#S' 2>/dev/null)" == "$prefix"* ]]
 }
 
-# open_in <session> — attach to a session, in a popup when we're inside tmux with
-# a client, otherwise a plain attach (e.g. run straight from a shell / over SSH).
+# open_in <session> — enter a session, choosing the method that works for the
+# context we're in:
+#   * Inside the plugin popup (CMUX_IN_POPUP) — tmux forbids NESTED popups, so we
+#     replace the picker with the session IN this popup via exec attach. This is
+#     the fix for "resume/jump does nothing from prefix+C".
+#   * A normal tmux pane — show the session in a fresh popup over it.
+#   * No tmux (bare shell / SSH) — attach directly.
 open_in() {
   local s="$1" w h
   w="$(cmux_popup_w)"; h="$(cmux_popup_h)"
-  if [ -n "${TMUX:-}" ] && ! _in_popup; then
+  if [ -n "${CMUX_IN_POPUP:-}" ]; then
+    exec tmux attach-session -t "$s"
+  elif [ -n "${TMUX:-}" ] && ! _in_popup; then
     tmux display-popup -w "$w" -h "$h" -E "tmux attach-session -t '$s'"
   else
-    # Detach any other client from it first so two viewers don't fight the size.
     tmux attach-session -t "$s" 2>/dev/null || tmux switch-client -t "$s"
   fi
 }

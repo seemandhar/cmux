@@ -95,8 +95,13 @@ picker_loop() {
         --bind="ctrl-d:execute-silent($self __reap)+reload($self __rows)" \
         --bind='ctrl-/:toggle-preview' \
         --bind='?:toggle-preview' \
+        --bind='alt-up:preview-up,alt-down:preview-down' \
+        --bind='pgup:preview-page-up,pgdn:preview-page-down' \
+        --bind='alt-j:preview-down,alt-k:preview-up' \
+        --bind='home:preview-top,end:preview-bottom' \
+        --bind='ctrl-f:preview-half-page-down,ctrl-b:preview-half-page-up' \
         --color='header:italic,pointer:cyan,marker:green' \
-        --header=$'enter open · ^n new · ^y new-YOLO · ^r new-in-dir · ^o resume-here\n^s send · ^x kill · ^d reap-idle · ^w web · ^e rename · ? preview')"
+        --header=$'enter open · ^n new · ^y new-YOLO · ^r new-in-dir · ^o resume-here\n^s send · ^x kill · ^d reap-idle · ^w web · ^e rename · ? preview · scroll ⎇↑↓ / PgUp·PgDn')"
 
     key="$(printf '%s' "$out" | sed -n '1p')"
     sel="$(printf '%s' "$out" | sed -n '2p')"

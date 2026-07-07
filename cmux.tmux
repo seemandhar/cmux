@@ -17,9 +17,11 @@ new_key="$(opt @cmux_new_key 'N')"
 w="$(opt @cmux_popup_w '92%')"
 h="$(opt @cmux_popup_h '92%')"
 
-# Open the manager in a popup on the current client.
+# Open the manager in a popup on the current client. CMUX_IN_POPUP tells cmux it
+# lives inside a popup, so selecting a session attaches in-place instead of
+# trying to open a (forbidden) nested popup.
 tmux bind-key "$key" \
-  display-popup -w "$w" -h "$h" -E "$CURRENT_DIR/cmux"
+  display-popup -w "$w" -h "$h" -E "CMUX_IN_POPUP=1 $CURRENT_DIR/cmux"
 
 # Launch a new session for the current pane's directory (records the origin window
 # so the manager can jump back here later).
