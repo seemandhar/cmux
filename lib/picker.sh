@@ -3,9 +3,25 @@
 # (live tmux sessions first, then on-disk history), with a live preview pane and
 # a keybinding for every action. This is what `cmux` with no arguments opens.
 
-# Build the full, sorted, formatted row set fed to fzf.
-#   sort key: kind (run before closed) then status-rank then age asc.
+# Clickable "buttons" — action rows pinned at the top of the picker. They're
+# ordinary fzf rows (kind=action), so they work with the mouse (double-click) AND
+# the keyboard (enter) on any fzf version. Schema: action \t <id> \t - \t <label>.
+action_rows() {
+  local c="$C_CYN$C_BOLD" g="$C_GRN$C_BOLD" y="$C_YEL$C_BOLD" \
+        m="$C_MAG$C_BOLD" r="$C_RESET" d="$C_DIM"
+  printf 'action\tnew\t-\t%s＋ New session%s %s· here%s\n'                 "$g" "$r" "$d" "$r"
+  printf 'action\tyolo\t-\t%s⚡ New — YOLO%s %s· skip permissions%s\n'      "$y" "$r" "$d" "$r"
+  printf 'action\tnewdir\t-\t%s📁 New in another project…%s\n'             "$c" "$r"
+  printf 'action\tcontinue\t-\t%s↻ Continue most recent%s %s· here%s\n'    "$c" "$r" "$d" "$r"
+  printf 'action\tweb\t-\t%s🌐 Web dashboard%s %s· phone access%s\n'        "$c" "$r" "$d" "$r"
+  printf 'action\treap\t-\t%s🧹 Reap finished sessions%s\n'                "$m" "$r"
+  printf 'action\tsep\t-\t%s──────────────  sessions  ──────────────%s\n' "$d" "$r"
+}
+
+# Build the full, sorted, formatted row set fed to fzf: action buttons first,
+# then sessions (kind: run before closed, then status-rank, then age asc).
 build_rows() {
+  action_rows
   { list_running; list_closed; } | while IFS=$'\t' read -r kind id st age agetxt att title cwd ref; do
       [ -z "$kind" ] && continue
       local krank srank
@@ -22,6 +38,20 @@ build_rows() {
 # __preview <kind> <id> <ref>`.
 cmux_preview() {
   local kind="$1" id="$2" ref="$3"
+  if [ "$kind" = action ]; then
+    printf '%s%s action%s\n' "$C_CYN" "$C_BOLD" "$C_RESET"
+    printf '%s────────────────────────────────────────%s\n\n' "$C_DIM" "$C_RESET"
+    case "$id" in
+      new)      echo "Start a new Claude session in:"; echo "  $PWD" ;;
+      yolo)     echo "Start a new session with:"; echo "  --dangerously-skip-permissions"; echo; echo "Skips every permission prompt. Use with care." ;;
+      newdir)   echo "Pick a project directory, then start a session there." ;;
+      continue) echo "Continue the most recent conversation in:"; echo "  $PWD"; echo "  (claude --continue)" ;;
+      web)      echo "Start the phone-friendly web dashboard (cmux web)." ;;
+      reap)     echo "Kill every finished (idle) live session at once." ;;
+      *)        echo "—" ;;
+    esac
+    return
+  fi
   if [ "$kind" = run ]; then
     printf '%s live · %s%s\n' "$C_TEAL" "$id" "$C_RESET"
     printf '%s────────────────────────────────────────%s\n' "$C_DIM" "$C_RESET"
@@ -87,11 +117,12 @@ picker_loop() {
     # Command substitution strips trailing newlines, so head/sed extraction is
     # exact — no NUL/IFS juggling needed.
     out="$(printf '%s\n' "$rows" | fzf --ansi --delimiter='\t' --with-nth='4..' \
-        --reverse --cycle --height=100% --pointer='▶' --marker='✓' \
+        --reverse --cycle --height=100% --pointer='▶' --marker='✓' --multi \
         --preview="$self __preview {1} {2} {3}" \
         --preview-window='right,58%,wrap,border-left' \
         --expect='enter,ctrl-n,ctrl-y,ctrl-r,ctrl-s,ctrl-o,ctrl-w,ctrl-e' \
-        --bind="ctrl-x:execute-silent($self __kill {1} {2})+reload($self __rows)" \
+        --bind='tab:toggle+down,shift-tab:toggle+up' \
+        --bind="ctrl-x:execute-silent($self __killmany {+2})+reload($self __rows)" \
         --bind="ctrl-d:execute-silent($self __reap)+reload($self __rows)" \
         --bind='ctrl-/:toggle-preview' \
         --bind='?:toggle-preview' \
@@ -101,7 +132,7 @@ picker_loop() {
         --bind='home:preview-top,end:preview-bottom' \
         --bind='ctrl-f:preview-half-page-down,ctrl-b:preview-half-page-up' \
         --color='header:italic,pointer:cyan,marker:green' \
-        --header=$'enter open · ^n new · ^y new-YOLO · ^r new-in-dir · ^o resume-here\n^s send · ^x kill · ^d reap-idle · ^w web · ^e rename · ? preview · scroll ⎇↑↓ / PgUp·PgDn')"
+        --header=$'click a button or press enter · tab mark · ^x kill marked\n^n new · ^y YOLO · ^r new-in-dir · ^o resume · ^s send · ^e rename · ? preview · scroll ⎇↑↓')"
 
     key="$(printf '%s' "$out" | sed -n '1p')"
     sel="$(printf '%s' "$out" | sed -n '2p')"
@@ -116,9 +147,21 @@ picker_loop() {
 
     case "$key" in
       enter|'')
-        [ "$kind" = noop ] && continue
-        if [ "$kind" = run ]; then jump_to "$id"; else resume_closed "$id" "$cwd"; fi
-        break ;;
+        case "$kind" in
+          noop|'') continue ;;
+          action)  # a clicked/selected button
+            case "$id" in
+              new)      launch_new "$PWD" "$(_origin_win)"; break ;;
+              yolo)     launch_new "$PWD" "$(_origin_win)" --yolo; break ;;
+              newdir)   local d; d="$(pick_project_dir)"; [ -n "$d" ] && { launch_new "$d" "$(_origin_win)"; break; } ;;
+              continue) continue_recent "$PWD" "$(_origin_win)"; break ;;
+              web)      cmux_web_hint; break ;;
+              reap)     kill_all_idle >/dev/null; continue ;;
+              *)        continue ;;   # separator / unknown
+            esac ;;
+          run)     jump_to "$id"; break ;;
+          *)       resume_closed "$id" "$cwd"; break ;;
+        esac ;;
       ctrl-o)  # resume the highlighted CLOSED convo in current dir explicitly
         [ "$kind" = closed ] && { resume_closed "$id" "$cwd"; break; } ;;
       ctrl-n)  launch_new "$PWD" "$(_origin_win)"; break ;;

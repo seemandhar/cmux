@@ -98,11 +98,14 @@ Binds `prefix + C` (open manager) and `prefix + N` (new session here).
 
 ## Usage
 
-Run `cmux` with no arguments to open the manager. Inside it:
+Run `cmux` with no arguments to open the manager. The top rows are **clickable
+action buttons** (double-click, or highlight + `enter`) — New, New-YOLO,
+New-in-dir, Continue-recent, Web dashboard, Reap — followed by your sessions.
 
 | Key | Action |
 |-----|--------|
-| `enter` | Open — attach/jump to a live session, or resume a closed one |
+| `enter` / double-click | Activate a button, open a live session, or resume a closed one |
+| `tab` | Mark a session (multi-select); `ctrl-x` then kills all marked |
 | `ctrl-n` | **N**ew session in the current directory |
 | `ctrl-y` | New session in **Y**OLO mode (skip all permission prompts) |
 | `ctrl-r` | New session in another project (pick a directory) |
@@ -122,10 +125,18 @@ cmux ls           # plain-text list (no fzf; great over a flaky SSH link)
 cmux new [dir]    # start a session in dir (default: current directory)
 cmux yolo [dir]   # start a session with --dangerously-skip-permissions
 cmux resume       # pick a past conversation and reopen it
+cmux continue     # continue the most recent conversation here (claude --continue)
 cmux reap         # kill every finished session
 cmux web [port]   # phone dashboard (default port 8790)
+cmux status       # compact summary for a tmux status bar
 cmux doctor       # check dependencies + hook wiring
 cmux json         # machine-readable session list (for scripting)
+```
+
+Show live counts in your tmux status bar:
+
+```tmux
+set -g status-right '#(cmux status)'
 ```
 
 ## Phone access 📱

@@ -6,7 +6,9 @@
 #   cmux new [dir]       start a new Claude session (in dir, default $PWD)
 #   cmux yolo [dir]      start a new session with --dangerously-skip-permissions
 #   cmux resume          pick a past conversation and reopen it in tmux
+#   cmux continue [dir]  continue the most recent conversation (claude --continue)
 #   cmux attach          pick a live session and attach/jump to it
+#   cmux status          compact summary for a tmux status bar
 #   cmux web [port]      serve the mobile-friendly web dashboard (phone access)
 #   cmux reap            kill every finished (idle/done) session
 #   cmux doctor          check dependencies and hook wiring
@@ -67,8 +69,22 @@ cmd_menu() {
 }
 
 # ── one-shot verbs ──────────────────────────────────────────────────────────
-cmd_new()    { need_tmux; launch_new "${1:-$PWD}" "$(_origin_win)"; }
-cmd_yolo()   { need_tmux; launch_new "${1:-$PWD}" "$(_origin_win)" --yolo; }
+cmd_new()      { need_tmux; launch_new "${1:-$PWD}" "$(_origin_win)"; }
+cmd_yolo()     { need_tmux; launch_new "${1:-$PWD}" "$(_origin_win)" --yolo; }
+cmd_continue() { need_tmux; continue_recent "${1:-$PWD}" "$(_origin_win)"; }
+
+# Compact one-line summary for a tmux status bar:
+#   set -g status-right '#(cmux status)'
+# Emits tmux-style colour codes (harmless plain text elsewhere).
+cmd_status() {
+  local r w c; read -r r w c <<<"$(cmux_counts 2>/dev/null || echo '0 0 0')"
+  # only show waiting when there is something needing attention
+  if [ "${w:-0}" -gt 0 ]; then
+    printf '#[fg=colour44]● %s#[default] #[fg=colour214]● %s waiting#[default]' "$r" "$w"
+  else
+    printf '#[fg=colour44]● %s claude#[default]' "$r"
+  fi
+}
 cmd_attach() { need_tmux; need_fzf; picker_loop; }
 cmd_resume() {
   need_tmux
@@ -137,6 +153,7 @@ case "${1:-}" in
   __preview) shift; CMUX_NO_COLOR=1 cmux_preview "$@"; exit 0 ;;
   __rows)    build_rows; exit 0 ;;
   __kill)    kill_session "${3:-}"; exit 0 ;;   # args: kind id
+  __killmany) shift; for _s in "$@"; do kill_session "$_s"; done; exit 0 ;;  # ids (marked-or-current)
   __reap)    kill_all_idle >/dev/null; exit 0 ;;
   __send)    shift; send_prompt "$1" "$2"; exit 0 ;;   # args: session text
   __new)     shift; create_session "$1" "" ${2:+--yolo} >/dev/null 2>&1; exit 0 ;;
@@ -150,6 +167,8 @@ case "${1:-}" in
   json)            cmd_json ;;
   new|start)       shift; cmd_new "$@" ;;
   yolo|danger)     shift; cmd_yolo "$@" ;;
+  continue|cont|c) shift; cmd_continue "$@" ;;
+  status)          cmd_status ;;
   attach|jump)     cmd_attach ;;
   resume|history)  cmd_resume ;;
   reap|clean)      cmd_reap ;;

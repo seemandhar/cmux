@@ -88,6 +88,20 @@ resume_closed() {
   open_in "$name"
 }
 
+# continue_recent <cwd> [origin] — continue the most recent conversation for a
+# directory (claude --continue) in its own tmux session, then enter it.
+continue_recent() {
+  local cwd="$1" origin="${2:-}" name cmd
+  cmd="$(cmux_command)"
+  name="$(new_session_name "$cwd")c"
+  if ! tmux has-session -t "$name" 2>/dev/null; then
+    tmux new-session -d -s "$name" -c "$cwd" "$cmd --continue"
+    tmux set-option -t "$name" @cmux_cwd "$cwd" 2>/dev/null
+  fi
+  [ -n "$origin" ] && tmux set-option -t "$name" @cmux_origin "$origin" 2>/dev/null
+  open_in "$name"
+}
+
 # jump_to <session> — switch the *outer* client to the session's origin window
 # (best effort) then open the session, mirroring the reference plugin's UX.
 jump_to() {
