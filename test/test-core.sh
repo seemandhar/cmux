@@ -46,6 +46,16 @@ eq  "lastPrompt fallback"    "a later prompt line" "$(jsonl_title "$PROJ/bbbbbbb
 eq  "first-prompt oneline"   "line one line two"   "$(jsonl_title "$PROJ/cccccccc-1111-2222-3333-444444444444.jsonl")"
 eq  "cwd from transcript"    "/tmp/proj"           "$(jsonl_cwd "$PROJ/aaaaaaaa-1111-2222-3333-444444444444.jsonl")"
 
+echo "non-file guard (regression: head -c '-' must not read stdin and hang)"
+# If jsonl_cwd/jsonl_title read stdin for a non-file arg, this blocks forever.
+# We feed a here-string as stdin; a correct impl ignores it and returns fast.
+got="$(jsonl_cwd - <<<'stdin should be ignored')"
+eq  "jsonl_cwd on '-' is empty"        ""                 "$got"
+got="$(jsonl_title - <<<'stdin should be ignored')"
+eq  "jsonl_title on '-' is placeholder" "(no description)" "$got"
+got="$(jsonl_cwd /no/such/file.jsonl </dev/null)"
+eq  "jsonl_cwd on missing file empty"  ""                 "$got"
+
 echo "closed listing shape (9 tab fields, none empty)"
 row="$(list_closed | head -1)"
 nf="$(printf '%s' "$row" | awk -F'\t' '{print NF}')"

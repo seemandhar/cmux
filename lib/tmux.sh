@@ -2,6 +2,9 @@
 # cmux — tmux operations. Everything that creates, enters, or destroys a session
 # lives here so the pickers stay pure UI. Safe to source multiple times.
 
+# Optional trace log for diagnosing launch/attach issues: CMUX_DEBUG=/path/log
+_dbg() { [ -n "${CMUX_DEBUG:-}" ] && printf '%s %s\n' "$(date +%T)" "$*" >> "$CMUX_DEBUG" 2>/dev/null; return 0; }
+
 # new_session_name <cwd>  -> stable "claude-<12hex>" name for a directory.
 # 12 hex (48 bits) makes first-prefix collisions between distinct dirs negligible.
 new_session_name() {
@@ -26,6 +29,7 @@ _in_popup() {
 open_in() {
   local s="$1" w h
   w="$(cmux_popup_w)"; h="$(cmux_popup_h)"
+  _dbg "open_in s=[$s] IN_POPUP=[${CMUX_IN_POPUP:-}] TMUX=[${TMUX:+set}] exists=$(tmux has-session -t "$s" 2>/dev/null && echo yes || echo no)"
   if [ -n "${CMUX_IN_POPUP:-}" ]; then
     exec tmux attach-session -t "$s"
   elif [ -n "${TMUX:-}" ] && ! _in_popup; then
@@ -49,8 +53,10 @@ create_session() {
   [ "${#extra[@]}" -gt 0 ] && cmd="$cmd ${extra[*]}"
 
   name="$(new_session_name "$cwd")"
+  _dbg "create_session cwd=[$cwd] cmd=[$cmd] name=[$name] pwd=[$PWD]"
   if ! tmux has-session -t "$name" 2>/dev/null; then
-    tmux new-session -d -s "$name" -c "$cwd" "$cmd"
+    tmux new-session -d -s "$name" -c "$cwd" "$cmd" 2>>"${CMUX_DEBUG:-/dev/null}"
+    _dbg "new-session rc=$? exists=$(tmux has-session -t "$name" 2>/dev/null && echo yes || echo no)"
     tmux set-option -t "$name" @cmux_cwd "$cwd" 2>/dev/null
   fi
   [ -n "$origin" ] && tmux set-option -t "$name" @cmux_origin "$origin" 2>/dev/null

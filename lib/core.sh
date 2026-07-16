@@ -72,7 +72,8 @@ _HEAD=131072   # 128 KiB from the start — where cwd / first prompt live
 
 jsonl_title() { # jsonl_title <file>  -> best available one-line description
   local f="$1" t tailbuf
-  tailbuf="$(tail -c "$_TAIL" "$f" 2>/dev/null)"
+  [ -f "$f" ] || { printf '(no description)'; return; }   # never read stdin ('-')
+  tailbuf="$(tail -c "$_TAIL" <"$f" 2>/dev/null)"
   # 1) Claude's own AI-generated title (best), most recent wins.
   t="$(printf '%s' "$tailbuf" | grep -a '"type":"ai-title"' | tail -1 \
         | jq -r '.aiTitle // empty' 2>/dev/null)"
@@ -82,7 +83,7 @@ jsonl_title() { # jsonl_title <file>  -> best available one-line description
         | jq -r '.lastPrompt // empty' 2>/dev/null)"
   [ -n "$t" ] && { printf '%s' "$(_oneline "$t")"; return; }
   # 3) The first human turn in the transcript (from the head).
-  t="$(head -c "$_HEAD" "$f" 2>/dev/null | grep -a '"role":"user"' | head -1 \
+  t="$(head -c "$_HEAD" <"$f" 2>/dev/null | grep -a '"role":"user"' | head -1 \
         | jq -r '(.message.content | if type=="array"
                    then (map(select(.type=="text").text)|first)
                    else . end) // empty' 2>/dev/null)"
@@ -91,7 +92,8 @@ jsonl_title() { # jsonl_title <file>  -> best available one-line description
 }
 
 jsonl_cwd() { # jsonl_cwd <file>
-  head -c "$_HEAD" "$1" 2>/dev/null | grep -am1 '"cwd":"' \
+  [ -f "$1" ] || return 0                                 # never read stdin ('-')
+  head -c "$_HEAD" <"$1" 2>/dev/null | grep -am1 '"cwd":"' \
     | jq -r '.cwd // empty' 2>/dev/null
 }
 

@@ -136,6 +136,7 @@ picker_loop() {
 
     key="$(printf '%s' "$out" | sed -n '1p')"
     sel="$(printf '%s' "$out" | sed -n '2p')"
+    _dbg "picker key=[$key] sel1=[$(printf '%s' "$sel" | cut -f1-3)]"
     # esc / ctrl-c: fzf prints nothing selectable -> leave the manager.
     [ -z "$sel" ] && break
 
@@ -179,12 +180,15 @@ picker_loop() {
 }
 
 # Look up a real cwd for a row (running: tmux option; closed: parse jsonl).
+# Only closed rows carry a transcript path in ref; action/noop rows carry '-',
+# so we must NOT feed that to jsonl_cwd (head -c "-" would read from stdin and
+# hang the whole picker).
 _lookup_cwd() {
   local kind="$1" id="$2" ref="$3" c
   if [ "$kind" = run ]; then
     c="$(tmux show-options -qv -t "$id" @cmux_cwd 2>/dev/null)"
     [ -z "$c" ] && c="$(tmux display-message -p -t "$id" '#{pane_current_path}' 2>/dev/null)"
-  else
+  elif [ "$kind" = closed ] && [ -f "$ref" ]; then
     c="$(jsonl_cwd "$ref")"
   fi
   printf '%s' "${c:-$PWD}"
